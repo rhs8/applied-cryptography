@@ -31,23 +31,38 @@ def allowed_ptxt(byte):
     )
 
 
+import re
+
 def english_score(text):
-    text = text.lower()
+    common_words = {
+        "the", "and", "for", "are", "but",
+        "not", "you", "all", "can", "had",
+        "her", "was", "one", "our", "out",
+        "day", "get", "has", "him", "his",
+        "how", "man", "new", "now", "old",
+        "see", "two", "way", "who", "its",
+        "may", "use", "from", "that", "with",
+        "this", "have", "been", "were", "other"
+    }
 
-    common_patterns = [
-        "the", "and", "ing", "ion", "ent",
-        "her", "for", "tha", "ere", "ter",
-        "hat", "his", "all", "eth", "tio",
-        "of", "to", "in", "is", "it", "an",
-        "re", "on", "at", "en", "nd"
-    ]
+    words = re.findall(r"[a-z]+", text.lower())
 
-    score = 0
+    return sum(word in common_words for word in words)
 
-    for pattern in common_patterns:
-        score += text.count(pattern) * len(pattern)
+def validate_crib(combined, guess, position):
+    guess_bytes = guess.encode("ascii")
 
-    return score
+    segment = combined[position:position + len(guess_bytes)]
+
+    if len(segment) != len(guess_bytes):
+        return False
+
+    recovered = xor_bytes(segment, guess_bytes)
+
+    return (
+        all(allowed_ptxt(byte) for byte in guess_bytes)
+        and all(allowed_ptxt(byte) for byte in recovered)
+    )
 
 
 def crib_drag(combined, guess):
@@ -55,10 +70,11 @@ def crib_drag(combined, guess):
     candidates = []
 
     for position in range(len(combined) - len(guess_bytes) + 1):
-        segment = combined[position:position + len(guess_bytes)]
-        result = xor_bytes(segment, guess_bytes)
 
-        if all(allowed_ptxt(byte) for byte in result):
+        if validate_crib(combined, guess, position):
+            segment = combined[position:position + len(guess_bytes)]
+            result = xor_bytes(segment, guess_bytes)
+
             recovered = result.decode("ascii")
             score = english_score(recovered)
 
@@ -69,7 +85,38 @@ def crib_drag(combined, guess):
     for score, position, recovered in candidates[:20]:
         print(f"Score: {score:2} | Position: {position:3} | {recovered!r}")
 
+def scan_common_cribs(combined):
+    cribs = [
+        " the ", " and ", " of ", " to ",
+        " in ", " is ", " that ", " for ",
+        " with ", " from ", " on ",
+        " by ", " was ", " are ",
+        " as ", " an ", " which ",
+        " their ", " it is ", " the first ",
+        " one of ", " part of "
+    ]
 
+    candidates = []
+
+    for crib in cribs:
+        for position in range(len(combined) - len(crib) + 1):
+
+            if validate_crib(combined, crib, position):
+                result = recover_text(combined, crib, position)
+                recovered = result.decode("ascii")
+                score = english_score(recovered)
+
+                candidates.append(
+                    (score, position, crib, recovered)
+                )
+
+    candidates.sort(reverse=True)
+
+    for score, position, crib, recovered in candidates[:30]:
+        print(
+            f"Score: {score:2} | Position: {position:3} | "
+            f"Crib: {crib!r} | Recovered: {recovered!r}"
+        )
 
 def test_spaces(combined):
     candidates = {}
@@ -128,6 +175,12 @@ if __name__ == "__main__":
         print(position, character)
     """
 
-    combined = xor_bytes(ctext0, ctext1)
+    guess = "system, can"
+    position = 357
 
-    crib_drag(combined, " the ")
+    result = recover_text(combined, guess, position)
+
+    print("Valid:", validate_crib(combined, guess, position))
+    print("Guess:", repr(guess))
+    print("Recovered:", repr(result.decode("ascii")))   
+    
